@@ -1,5 +1,11 @@
 # aws-security-hardening
 
+
+![Uploading aws-security-architecture.png…]()
+
+
+
+
 Implementation repository for the **AWS Security Hardening Plan** (Oct 22, 2026 · Shartul Kumar).
 It turns the 24-week, 7-phase plan into deployable code: Terraform for every AWS security
 control, reusable Azure DevOps security templates, scanner configuration, Lambda/Step Functions
