@@ -1,9 +1,6 @@
 # aws-security-hardening
 
-
-![Uploading aws-security-architecture.png…]()
-
-
+<img width="2400" height="1912" alt="aws-security-architecture" src="https://github.com/user-attachments/assets/728c8b0b-11c8-40b1-a5d1-cdc585dafc4e" />
 
 
 Implementation repository for the **AWS Security Hardening Plan** (Oct 22, 2026 · Shartul Kumar).
