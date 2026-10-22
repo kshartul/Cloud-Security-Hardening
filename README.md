@@ -3,7 +3,7 @@
 <img width="2400" height="1912" alt="aws-security-architecture" src="https://github.com/user-attachments/assets/728c8b0b-11c8-40b1-a5d1-cdc585dafc4e" />
 
 
-Implementation repository for the **AWS Security Hardening Plan** (Oct 22, 2026 · Shartul Kumar).
+Implementation repository for the **AWS Security Hardening Plan**.
 It turns the 24-week, 7-phase plan into deployable code: Terraform for every AWS security
 control, reusable Azure DevOps security templates, scanner configuration, Lambda/Step Functions
 for vulnerability routing and auto-remediation, and the runbooks/standards that auditors ask for.
