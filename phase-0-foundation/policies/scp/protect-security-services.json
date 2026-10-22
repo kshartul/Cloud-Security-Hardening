@@ -1,0 +1,59 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ProtectSecurityServices",
+      "Effect": "Deny",
+      "Action": [
+        "guardduty:DeleteDetector",
+        "guardduty:DisassociateFromMasterAccount",
+        "guardduty:DisassociateFromAdministratorAccount",
+        "guardduty:UpdateDetector",
+        "guardduty:DeletePublishingDestination",
+        "securityhub:DisableSecurityHub",
+        "securityhub:DisassociateFromMasterAccount",
+        "securityhub:DisassociateFromAdministratorAccount",
+        "securityhub:BatchDisableStandards",
+        "config:StopConfigurationRecorder",
+        "config:DeleteConfigurationRecorder",
+        "config:DeleteDeliveryChannel",
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:UpdateTrail",
+        "cloudtrail:PutEventSelectors",
+        "access-analyzer:DeleteAnalyzer",
+        "inspector2:Disable",
+        "inspector2:DisassociateMember",
+        "macie2:DisableMacie",
+        "macie2:DisassociateFromAdministratorAccount",
+        "detective:DisassociateMembership",
+        "securitylake:DeleteDataLake"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/SecurityBreakGlass",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/SecurityPipelineDeploy"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyLeaveOrganization",
+      "Effect": "Deny",
+      "Action": "organizations:LeaveOrganization",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyRootUser",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringLike": { "aws:PrincipalArn": "arn:aws:iam::*:root" }
+      }
+    }
+  ]
+}

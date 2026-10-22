@@ -1,0 +1,141 @@
+rules:
+  # --- Redshift / SQL injection via string building ---
+  - id: kf-sql-string-concat-execute
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL built with string formatting and passed to execute(). Use parameterised queries
+      (cursor.execute(sql, params)) or redshift_connector paramstyle.
+    metadata:
+      cwe: "CWE-89"
+      owasp: "A03:2021 - Injection"
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute(f"...", ...)
+          - pattern: $CUR.execute("..." % $X, ...)
+          - pattern: $CUR.execute("..." + $X, ...)
+          - pattern: $CUR.execute("...".format(...), ...)
+          - pattern: |
+              $SQL = f"..."
+              ...
+              $CUR.execute($SQL, ...)
+
+  - id: kf-redshift-data-api-unparameterised
+    languages: [python]
+    severity: ERROR
+    message: Redshift Data API execute_statement with formatted SQL and no Parameters — use Parameters=[...].
+    metadata: { cwe: "CWE-89", category: security }
+    patterns:
+      - pattern: $C.execute_statement(..., Sql=$SQL, ...)
+      - pattern-not: $C.execute_statement(..., Parameters=$P, ...)
+      - metavariable-pattern:
+          metavariable: $SQL
+          pattern-either:
+            - pattern: f"..."
+            - pattern: '"..." + $X'
+            - pattern: '"...".format(...)'
+
+  # --- Unsafe deserialisation ---
+  - id: kf-pickle-loads
+    languages: [python]
+    severity: ERROR
+    message: pickle/cPickle on untrusted data allows code execution — use JSON.
+    metadata: { cwe: "CWE-502", category: security }
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: cPickle.loads(...)
+
+  - id: kf-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: yaml.load without SafeLoader — use yaml.safe_load.
+    metadata: { cwe: "CWE-502", category: security }
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load(..., Loader=SafeLoader)
+
+  # --- AWS specifics ---
+  - id: kf-hardcoded-aws-account-arn
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    message: Hard-coded ARN with account id — read from SSM/env so stages stay isolated.
+    metadata: { category: maintainability }
+    pattern-regex: 'arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:'
+
+  - id: kf-boto3-client-no-region
+    languages: [python]
+    severity: INFO
+    message: boto3 client without region_name; relies on environment — be explicit in shared libraries.
+    patterns:
+      - pattern: boto3.client($SVC)
+      - pattern-not-inside: |
+          def handler(...):
+            ...
+
+  - id: kf-s3-public-acl
+    languages: [python]
+    severity: ERROR
+    message: Object written with a public ACL.
+    metadata: { cwe: "CWE-732", category: security }
+    pattern-either:
+      - pattern: $S3.put_object(..., ACL="public-read", ...)
+      - pattern: $S3.put_object(..., ACL="public-read-write", ...)
+      - pattern: '$S3.upload_file(..., ExtraArgs={..., "ACL": "public-read", ...}, ...)'
+
+  # --- Lambda / API ---
+  - id: kf-lambda-returns-exception-detail
+    languages: [python]
+    severity: WARNING
+    message: Exception text returned to API caller — log it and return a generic error (API8 misconfiguration).
+    metadata: { owasp: "API8:2023", category: security }
+    patterns:
+      - pattern-inside: |
+          try:
+            ...
+          except $E as $ERR:
+            ...
+      - pattern: |
+          return {..., "body": <... $ERR ...>, ...}
+
+  - id: kf-ssrf-requests-from-event
+    languages: [python]
+    severity: ERROR
+    message: Outbound request URL taken from the API event — validate against an allow-list (API7 SSRF).
+    metadata: { owasp: "API7:2023", cwe: "CWE-918", category: security }
+    mode: taint
+    pattern-sources:
+      - pattern: $EVENT["body"]
+      - pattern: $EVENT["queryStringParameters"]
+      - pattern: $EVENT.get("queryStringParameters")
+      - pattern: json.loads($EVENT["body"])
+    pattern-sinks:
+      - pattern: requests.$M($URL, ...)
+      - pattern: urllib.request.urlopen($URL, ...)
+      - pattern: httpx.$M($URL, ...)
+    pattern-sanitizers:
+      - pattern: validate_outbound_url(...)
+
+  - id: kf-missing-owner-check
+    languages: [python]
+    severity: WARNING
+    message: >
+      Item fetched by id from the path without an owner/tenant check (BOLA, API1).
+      Call authz.assert_owner(item, principal) before returning.
+    metadata: { owasp: "API1:2023", category: security }
+    patterns:
+      - pattern-inside: |
+          def $H(event, context):
+            ...
+      - pattern: |
+          $ITEM = $TABLE.get_item(Key={..., $K: event["pathParameters"][$P], ...})
+          ...
+          return $R
+      - pattern-not: |
+          $ITEM = $TABLE.get_item(...)
+          ...
+          assert_owner(...)
+          ...
+          return $R

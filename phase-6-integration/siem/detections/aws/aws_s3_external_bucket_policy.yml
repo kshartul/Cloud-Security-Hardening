@@ -1,0 +1,27 @@
+title: AWS S3 Bucket Policy Allows External Or Public Principal
+id: 6f3b0e0a-1c2d-4f7a-9b11-0a1b2c3d4e05
+status: experimental
+description: PutBucketPolicy whose policy grants "*" or an AWS principal outside the organization (data exfiltration staging).
+author: Cloud/DevOps Platform
+date: 2026/10/22
+tags:
+  - attack.exfiltration
+  - attack.t1537
+  - kf.id.AWS-EXF-001
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    eventSource: s3.amazonaws.com
+    eventName: PutBucketPolicy
+  keywords_public:
+    requestParameters.bucketPolicy.Statement.Principal|contains:
+      - '"*"'
+      - 'AWS":"*'
+  filter_org_condition:
+    requestParameters.bucketPolicy|contains: 'aws:PrincipalOrgID'
+  condition: selection and keywords_public and not filter_org_condition
+falsepositives:
+  - Policies restricted with aws:SourceVpce / aws:PrincipalOrgID (filtered); CloudFront OAC policies use service principals
+level: high

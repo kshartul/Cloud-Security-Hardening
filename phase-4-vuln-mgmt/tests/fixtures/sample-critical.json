@@ -1,0 +1,33 @@
+[
+  {
+    "SchemaVersion": "2018-10-08",
+    "Id": "secvuln-e2e-test-0001",
+    "ProductArn": "arn:aws:securityhub:ap-south-1:111111111111:product/111111111111/default",
+    "GeneratorId": "secvuln-e2e",
+    "AwsAccountId": "111111111111",
+    "Types": ["Software and Configuration Checks/Vulnerabilities/CVE"],
+    "CreatedAt": "2026-10-22T00:00:00Z",
+    "UpdatedAt": "2026-10-22T00:00:00Z",
+    "Severity": { "Label": "CRITICAL" },
+    "Title": "E2E test — CVE-2021-44228 in sample function",
+    "Description": "Synthetic finding to validate routing. Safe to close.",
+    "Resources": [
+      {
+        "Type": "AwsLambdaFunction",
+        "Id": "arn:aws:lambda:ap-south-1:111111111111:function:secvuln-e2e",
+        "Region": "ap-south-1",
+        "Tags": {
+          "owner": "platform",
+          "team": "platform",
+          "environment": "dev",
+          "exposure": "internal",
+          "data-classification": "internal",
+          "criticality": "tier-3"
+        }
+      }
+    ],
+    "Vulnerabilities": [{ "Id": "CVE-2021-44228", "Cvss": [{ "Version": "3.1", "BaseScore": 10.0 }] }],
+    "Workflow": { "Status": "NEW" },
+    "RecordState": "ACTIVE"
+  }
+]

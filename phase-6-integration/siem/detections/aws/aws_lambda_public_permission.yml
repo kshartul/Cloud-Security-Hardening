@@ -1,0 +1,28 @@
+title: AWS Lambda Permission Granted To Any Principal
+id: 6f3b0e0a-1c2d-4f7a-9b11-0a1b2c3d4e04
+status: stable
+description: lambda:AddPermission with principal "*" or a function URL created/updated with AuthType NONE (persistence / backdoor).
+author: Cloud/DevOps Platform
+date: 2026/10/22
+tags:
+  - attack.persistence
+  - attack.t1546
+  - kf.id.AWS-PER-002
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  sel_permission:
+    eventSource: lambda.amazonaws.com
+    eventName|startswith: AddPermission
+    requestParameters.principal: '*'
+  sel_url:
+    eventSource: lambda.amazonaws.com
+    eventName|startswith:
+      - CreateFunctionUrlConfig
+      - UpdateFunctionUrlConfig
+    requestParameters.authType: NONE
+  condition: sel_permission or sel_url
+falsepositives:
+  - Approved public function URLs (tag public-url=approved) — should be denied by SCP anyway
+level: high

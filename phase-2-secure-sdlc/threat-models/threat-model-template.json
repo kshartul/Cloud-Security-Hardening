@@ -1,0 +1,26 @@
+{
+  "version": "2.2.0",
+  "summary": {
+    "title": "<service-name>",
+    "owner": "<team>",
+    "description": "Threat model for <service-name>. Review on each major release.",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [{ "name": "<security champion>" }, { "name": "<appsec engineer>" }],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "Main data flow",
+        "diagramType": "STRIDE",
+        "placeholder": "Build the DFD in OWASP Threat Dragon and save over this file",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.2.0",
+        "cells": []
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "<appsec reviewer>",
+    "threatTop": 0
+  }
+}

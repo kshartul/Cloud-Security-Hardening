@@ -1,0 +1,43 @@
+# Weekly Nuclei scan of the public DNS inventory (P3.9)
+trigger: none
+pr: none
+schedules:
+  - cron: '0 21 * * 6'            # Sunday 02:30 IST
+    displayName: weekly-nuclei
+    branches: { include: [main] }
+    always: true
+
+variables:
+  - group: security-scanners
+
+jobs:
+  - job: Nuclei
+    timeoutInMinutes: 120
+    pool: { vmImage: ubuntu-latest }
+    steps:
+      - task: AWSShellScript@1
+        displayName: Build public hostname inventory (Route 53 + API GW custom domains)
+        inputs:
+          awsCredentials: aws-security-readonly
+          regionName: ap-south-1
+          scriptType: inline
+          inlineScript: |
+            set -euo pipefail
+            pip install --quiet boto3
+            python phase-3-dast-api/scripts/export_api_inventory.py --hostnames-only --out targets.txt
+            wc -l targets.txt
+      - bash: |
+          set -uo pipefail
+          docker run --rm -v "$PWD":/work projectdiscovery/nuclei:latest \
+            -l /work/targets.txt -t cves/ -t exposures/ -t misconfiguration/ -t takeovers/ \
+            -severity medium,high,critical -rl 50 -c 10 -jsonl -o /work/nuclei.jsonl -silent
+          mkdir -p "$(Build.ArtifactStagingDirectory)/nuclei" && cp nuclei.jsonl "$(Build.ArtifactStagingDirectory)/nuclei/" || true
+        displayName: Nuclei scan
+      - bash: |
+          pip install --quiet requests
+          python phase-2-secure-sdlc/scripts/push_to_defectdojo.py --reports "$(Build.ArtifactStagingDirectory)/nuclei" \
+            --product external-attack-surface --engagement "Nuclei-weekly" --build-id "$(Build.BuildId)"
+        env:
+          DD_URL: $(DEFECTDOJO_URL)
+          DD_API_KEY: $(DEFECTDOJO_API_KEY)
+        condition: always()

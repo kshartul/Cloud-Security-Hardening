@@ -1,0 +1,38 @@
+title = "Org gitleaks config"
+
+[extend]
+useDefault = true
+
+# ---- Internal token formats ----
+[[rules]]
+id = "kf-internal-api-token"
+description = "Internal platform API token"
+regex = '''kfp_(live|test)_[A-Za-z0-9]{32,}'''
+keywords = ["kfp_live_", "kfp_test_"]
+tags = ["internal", "token"]
+
+[[rules]]
+id = "redshift-connection-string"
+description = "Redshift JDBC/psycopg connection string with password"
+regex = '''(?i)(redshift|postgres(ql)?)://[^:\s]+:[^@\s]{6,}@[^\s]+\.redshift\.amazonaws\.com'''
+keywords = ["redshift.amazonaws.com"]
+tags = ["database", "credential"]
+
+[[rules]]
+id = "ado-pat"
+description = "Azure DevOps personal access token"
+regex = '''(?i)(ado|azure|devops|pat)[_-]?(token|pat)?\s*[:=]\s*['"]?[a-z0-9]{52}['"]?'''
+keywords = ["pat", "devops", "ado"]
+tags = ["ci", "token"]
+
+[allowlist]
+description = "Test fixtures and docs placeholders"
+paths = [
+  '''(^|/)tests?/fixtures/''',
+  '''\.md$''',
+  '''package-lock\.json$''',
+]
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''111111111111|222222222222|333333333333''',
+]

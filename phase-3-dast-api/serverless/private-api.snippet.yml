@@ -1,0 +1,28 @@
+# Admin / internal routes on a separate PRIVATE REST API (API5, API9) — separate serverless service.
+provider:
+  endpointType: PRIVATE
+  vpcEndpointIds:
+    - ${ssm:/omni/network/execute-api-vpce-id}
+  apiGateway:
+    resourcePolicy:
+      - Effect: Deny
+        Principal: '*'
+        Action: execute-api:Invoke
+        Resource: execute-api:/*
+        Condition:
+          StringNotEquals:
+            aws:SourceVpce: ${ssm:/omni/network/execute-api-vpce-id}
+      - Effect: Allow
+        Principal: '*'
+        Action: execute-api:Invoke
+        Resource: execute-api:/*
+
+functions:
+  reprocessBatch:
+    handler: src/admin.reprocess
+    events:
+      - http:
+          path: admin/batches/{id}/reprocess
+          method: post
+          authorizer:
+            type: aws_iam              # SigV4 from internal services only

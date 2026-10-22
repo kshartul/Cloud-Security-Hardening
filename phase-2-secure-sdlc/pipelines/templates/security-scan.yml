@@ -1,0 +1,240 @@
+# =============================================================================
+# templates/security-scan.yml — reusable Azure DevOps security stage (Phase 2)
+#
+# Consume from any repo:
+#   resources:
+#     repositories:
+#       - repository: security
+#         type: git
+#         name: Platform/aws-security-hardening   # this repo
+#         ref: refs/tags/v1.4.0
+#   stages:
+#     - template: phase-2-secure-sdlc/pipelines/templates/security-scan.yml@security
+#       parameters:
+#         failOnFindings: true
+#         serverlessStage: dev
+#
+# Gates (fail only on NEW findings vs. origin/main):
+#   secrets  : any Gitleaks finding                          -> fail
+#   SAST     : Semgrep ERROR (diff-aware baseline)            -> fail
+#   SAST-py  : Bandit HIGH severity + HIGH confidence (new)   -> fail
+#   SCA      : Trivy HIGH/CRITICAL with fix available         -> fail
+#   IaC      : Checkov failed checks not soft-failed          -> fail
+#   IAM      : Access Analyzer validate-policy ERROR/SECURITY_WARNING -> fail
+# All results are published as SARIF (Scans tab) and pushed to DefectDojo.
+# =============================================================================
+
+parameters:
+  - name: failOnFindings
+    type: boolean
+    default: true
+  - name: srcDir
+    type: string
+    default: src
+  - name: serverlessStage
+    type: string
+    default: ''          # set to package serverless.yml for IaC/IAM scans
+  - name: terraformDirs
+    type: object
+    default: []          # e.g. ['infra/terraform']
+  - name: pythonVersion
+    type: string
+    default: '3.12'
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: defectDojoProduct
+    type: string
+    default: '$(Build.Repository.Name)'
+  - name: awsServiceConnection
+    type: string
+    default: 'aws-security-readonly'   # OIDC service connection, only needs access-analyzer:Validate*/Check*
+  - name: dependsOn
+    type: object
+    default: []
+  - name: templateRepoAlias
+    type: string
+    default: security    # alias of the repository resource that holds this template
+
+stages:
+  - stage: Security
+    displayName: Security scans
+    dependsOn: ${{ parameters.dependsOn }}
+    variables:
+      SCAN_FAIL: ${{ lower(parameters.failOnFindings) }}
+      REPORT_DIR: $(Build.ArtifactStagingDirectory)/security
+      SEC_TOOLS: $(Agent.BuildDirectory)/security-templates/phase-2-secure-sdlc
+      BASELINE_REF: origin/$(System.PullRequest.TargetBranchName)
+    jobs:
+      - job: AppSec
+        displayName: SAST · SCA · Secrets · IaC · SBOM
+        timeoutInMinutes: 25
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            path: s                       # keep app repo in $(Build.SourcesDirectory)
+            fetchDepth: 0
+            persistCredentials: false
+          - checkout: ${{ parameters.templateRepoAlias }}
+            path: security-templates      # scripts + shared configs
+            fetchDepth: 1
+
+          - task: UsePythonVersion@0
+            inputs: { versionSpec: '${{ parameters.pythonVersion }}' }
+
+          - task: NodeTool@0
+            inputs: { versionSpec: '${{ parameters.nodeVersion }}' }
+
+          - bash: |
+              set -euo pipefail
+              mkdir -p "$(REPORT_DIR)"
+              # Baseline for diff-aware scans: PR target branch, or main for CI builds
+              if [ -z "$(System.PullRequest.TargetBranchName)" ]; then
+                echo "##vso[task.setvariable variable=BASELINE_REF]origin/main"
+              fi
+              pip install --quiet "semgrep==1.*" "checkov==3.*" "bandit[sarif]==1.*"
+              curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+              GL_VER=8.21.2
+              curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VER}/gitleaks_${GL_VER}_linux_x64.tar.gz" | tar -xz -C /usr/local/bin gitleaks
+              semgrep --version; checkov --version; trivy --version; syft version; gitleaks version
+            displayName: Install scanners (pinned majors)
+
+          # ---------------- Secrets ----------------
+          - bash: |
+              set -uo pipefail
+              CFG="--config $(SEC_TOOLS)/configs/.gitleaks.toml"
+              [ -f .gitleaks.toml ] && CFG="--config .gitleaks.toml"
+              if [ -n "$(System.PullRequest.PullRequestId)" ]; then
+                RANGE="--log-opts=$(BASELINE_REF)..HEAD"
+              else
+                RANGE="--log-opts=--max-count=50"
+              fi
+              gitleaks git . $CFG $RANGE --redact --report-format sarif --report-path "$(REPORT_DIR)/gitleaks.sarif" --exit-code 2
+              rc=$?
+              if [ $rc -eq 2 ]; then
+                echo "##vso[task.logissue type=error]Secrets detected — rotate the credential, then remove it."
+                [ "$(SCAN_FAIL)" = "true" ] && exit 1
+              fi
+              exit 0
+            displayName: Secrets scan (Gitleaks)
+
+          # ---------------- SAST ----------------
+          - bash: |
+              set -uo pipefail
+              RULES="--config p/owasp-top-ten --config p/python --config p/nodejs --config p/secrets --config p/aws-lambda"
+              RULES="$RULES --config $(SEC_TOOLS)/configs/semgrep/"
+              [ -d .semgrep ] && RULES="$RULES --config .semgrep/"
+              semgrep scan $RULES \
+                --baseline-commit "$(git merge-base HEAD $(BASELINE_REF))" \
+                --severity ERROR --sarif --output "$(REPORT_DIR)/semgrep.sarif" --error --metrics=off
+              rc=$?
+              if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+              exit 0
+            displayName: SAST (Semgrep, diff-aware)
+
+          - bash: |
+              set -uo pipefail
+              if find "${{ parameters.srcDir }}" -name '*.py' -print -quit 2>/dev/null | grep -q .; then
+                bandit -r "${{ parameters.srcDir }}" -x tests,test -lll -iii -f sarif -o "$(REPORT_DIR)/bandit.sarif"
+                rc=$?
+                if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+              else
+                echo "No Python sources — skipping Bandit"
+              fi
+              exit 0
+            displayName: SAST (Bandit — high/high)
+
+          # ---------------- SCA + SBOM ----------------
+          - bash: |
+              set -uo pipefail
+              IGN=""; [ -f .trivyignore ] && IGN="--ignorefile .trivyignore"
+              trivy fs . --scanners vuln,license --severity HIGH,CRITICAL --ignore-unfixed $IGN \
+                --format sarif --output "$(REPORT_DIR)/trivy.sarif" --exit-code 1
+              rc=$?
+              syft dir:. -o cyclonedx-json="$(REPORT_DIR)/sbom.cdx.json"
+              if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+              exit 0
+            displayName: SCA (Trivy) + SBOM (Syft CycloneDX)
+
+          # ---------------- IaC ----------------
+          - ${{ if ne(parameters.serverlessStage, '') }}:
+            - bash: |
+                set -euo pipefail
+                npm ci --no-audit --no-fund
+                npx serverless package --stage ${{ parameters.serverlessStage }} --package .serverless-scan
+              displayName: Package Serverless (CloudFormation for scanning)
+              env:
+                SLS_TELEMETRY_DISABLED: '1'
+
+          - ${{ each dir in parameters.terraformDirs }}:
+            - bash: |
+                set -euo pipefail
+                cd "${{ dir }}"
+                terraform init -backend=false -input=false
+                terraform validate
+              displayName: terraform validate (${{ dir }})
+
+          - bash: |
+              set -uo pipefail
+              CFG="--config-file $(SEC_TOOLS)/configs/.checkov.yaml"
+              [ -f .checkov.yaml ] && CFG="--config-file .checkov.yaml"
+              checkov -d . $CFG --framework terraform,serverless,cloudformation,secrets,dockerfile \
+                --output cli --output sarif --output-file-path "$(REPORT_DIR)" --soft-fail-on LOW
+              rc=$?
+              [ -f "$(REPORT_DIR)/results_sarif.sarif" ] && mv "$(REPORT_DIR)/results_sarif.sarif" "$(REPORT_DIR)/checkov.sarif"
+              if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+              exit 0
+            displayName: IaC scan (Checkov)
+
+          - ${{ if ne(parameters.serverlessStage, '') }}:
+            - bash: |
+                set -uo pipefail
+                gem install --silent cfn-nag
+                cfn_nag_scan --input-path .serverless-scan --template-pattern '.*cloudformation-template-update-stack\.json' \
+                  --output-format sarif > "$(REPORT_DIR)/cfn-nag.sarif"
+                rc=$?
+                if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+                exit 0
+              displayName: IaC scan (cfn-nag on generated CloudFormation)
+
+            # ---------------- IAM policy checks ----------------
+            - task: AWSShellScript@1
+              displayName: IAM policy validation (Access Analyzer)
+              inputs:
+                awsCredentials: ${{ parameters.awsServiceConnection }}
+                regionName: ap-south-1
+                scriptType: inline
+                inlineScript: |
+                  set -uo pipefail
+                  pip install --quiet boto3
+                  python "$(SEC_TOOLS)/scripts/check_iam_policies.py" \
+                    --cfn .serverless-scan/cloudformation-template-update-stack.json \
+                    --out "$(REPORT_DIR)/iam-policy-findings.json"
+                  rc=$?
+                  if [ $rc -ne 0 ] && [ "$(SCAN_FAIL)" = "true" ]; then exit 1; fi
+                  exit 0
+
+          # ---------------- Publish ----------------
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            displayName: Publish SARIF (Scans tab)
+            inputs:
+              PathtoPublish: $(REPORT_DIR)
+              ArtifactName: CodeAnalysisLogs
+
+          - bash: |
+              set -uo pipefail
+              pip install --quiet requests
+              python "$(SEC_TOOLS)/scripts/push_to_defectdojo.py" \
+                --reports "$(REPORT_DIR)" \
+                --product "${{ parameters.defectDojoProduct }}" \
+                --engagement "CI-$(Build.SourceBranchName)" \
+                --build-id "$(Build.BuildId)" --commit "$(Build.SourceVersion)" \
+                --branch "$(Build.SourceBranchName)" || echo "##vso[task.logissue type=warning]DefectDojo upload failed"
+            condition: always()
+            displayName: Upload to DefectDojo
+            env:
+              DD_URL: $(DEFECTDOJO_URL)
+              DD_API_KEY: $(DEFECTDOJO_API_KEY)   # secret from Key Vault-backed variable group

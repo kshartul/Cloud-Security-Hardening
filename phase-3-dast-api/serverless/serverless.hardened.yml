@@ -1,0 +1,148 @@
+# =============================================================================
+# Hardened Serverless Framework v3 pattern for omni APIs (Phase 3, P3.5)
+# Covers OWASP API Top 10 (2023) controls that live in the service definition.
+# =============================================================================
+service: omni-dw-api-services
+frameworkVersion: '3'
+
+plugins:
+  - serverless-iam-roles-per-function     # least privilege per function
+  - serverless-plugin-resource-tagging    # propagate mandatory tags
+
+custom:
+  stage: ${opt:stage, 'dev'}
+  tags:
+    owner: dw-api-team
+    team: data-platform
+    service: omni-dw-api-services
+    environment: ${self:custom.stage}
+    data-classification: confidential
+    exposure: internet
+    criticality: tier-1
+  throttle:
+    dev:   { burst: 50,  rate: 25 }
+    stage: { burst: 100, rate: 50 }
+    prod:  { burst: 500, rate: 200 }
+
+provider:
+  name: aws
+  runtime: python3.12
+  architecture: arm64
+  region: ap-south-1
+  stage: ${self:custom.stage}
+  memorySize: 256
+  timeout: 10
+  logRetentionInDays: 365
+  deploymentBucket:
+    blockPublicAccess: true
+    serverSideEncryption: aws:kms
+    sseKMSKeyId: ${ssm:/omni/kms/api-key-arn}
+  kmsKeyArn: ${ssm:/omni/kms/api-key-arn}        # Lambda env var encryption
+  iam:
+    deploymentRole: arn:aws:iam::${aws:accountId}:role/ServerlessCfnExecution   # CFN service role with permissions boundary
+  stackTags: ${self:custom.tags}
+  tags: ${self:custom.tags}
+  tracing:
+    apiGateway: true
+    lambda: true
+  logs:
+    restApi:
+      accessLogging: true
+      executionLogging: false        # avoid logging bodies/PII
+      fullExecutionData: false
+      format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","ua":"$context.identity.userAgent","user":"$context.authorizer.claims.sub","client":"$context.authorizer.claims.client_id","method":"$context.httpMethod","route":"$context.resourcePath","status":"$context.status","latency":"$context.responseLatency","wafStatus":"$context.waf.status","authError":"$context.authorizer.error"}'
+  apiGateway:
+    minimumCompressionSize: 1024
+    disableDefaultEndpoint: true      # only the custom domain (TLS 1.2 policy) is reachable
+    metrics: true
+    shouldStartNameWithService: true
+    usagePlan:                        # API4 — per-stage throttling + quota for client keys (metering only, not auth)
+      throttle:
+        burstLimit: ${self:custom.throttle.${self:custom.stage}.burst}
+        rateLimit: ${self:custom.throttle.${self:custom.stage}.rate}
+      quota:
+        limit: 1000000
+        period: MONTH
+    request:
+      schemas:
+        order-query:
+          name: OrderQuery
+          schema: ${file(schemas/order-query.json)}
+  environment:
+    POWERTOOLS_SERVICE_NAME: omni-dw-api
+    LOG_LEVEL: INFO
+    REDSHIFT_SECRET_ARN: ${ssm:/omni/dw/redshift-secret-arn}   # ARN only — never the value
+  vpc:
+    securityGroupIds:
+      - ${ssm:/omni/network/lambda-sg-id}
+    subnetIds: ${ssm:/omni/network/private-subnet-ids}
+
+functions:
+  getOrder:
+    handler: src/orders.get
+    reservedConcurrency: 50              # API4 — cap blast radius
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [secretsmanager:GetSecretValue]
+        Resource: ${ssm:/omni/dw/redshift-secret-arn}
+      - Effect: Allow
+        Action: [redshift-data:ExecuteStatement, redshift-data:GetStatementResult, redshift-data:DescribeStatement]
+        Resource: arn:aws:redshift:${aws:region}:${aws:accountId}:cluster:omni-dw-${self:custom.stage}
+    events:
+      - http:
+          path: orders/{id}
+          method: get
+          authorizer:                      # API2 — no API keys as authentication
+            type: COGNITO_USER_POOLS
+            arn: ${ssm:/omni/cognito/userpool-arn}
+            scopes: [omni-api/orders.read] # API5 — per-route scopes
+          request:
+            parameters:
+              paths: { id: true }
+          cors:
+            origins: ['https://app.example.com']  # API8 — no wildcard origins
+            headers: [Content-Type, Authorization]
+            allowCredentials: false
+
+  listOrders:
+    handler: src/orders.list
+    reservedConcurrency: 20
+    events:
+      - http:
+          path: orders
+          method: post
+          authorizer:
+            type: COGNITO_USER_POOLS
+            arn: ${ssm:/omni/cognito/userpool-arn}
+            scopes: [omni-api/orders.read]
+          request:
+            schemas:
+              application/json: order-query   # API3/API4 — validated body, bounded arrays
+
+resources:
+  Resources:
+    # TLS 1.2 custom domain is managed by serverless-domain-manager (securityPolicy: tls_1_2) or Terraform
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        RestApiId: { Ref: ApiGatewayRestApi }
+        ResponseType: DEFAULT_4XX
+        ResponseTemplates:
+          application/json: '{"message":"Request rejected","requestId":"$context.requestId"}'   # API8 — no detail leakage
+    GatewayResponseDefault5XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        RestApiId: { Ref: ApiGatewayRestApi }
+        ResponseType: DEFAULT_5XX
+        ResponseTemplates:
+          application/json: '{"message":"Internal error","requestId":"$context.requestId"}'
+    ApiWafAssociation:
+      # Only in accounts NOT yet covered by Firewall Manager; FMS-managed stages skip this.
+      Type: AWS::WAFv2::WebACLAssociation
+      Condition: AttachWafDirectly
+      Properties:
+        ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGatewayRestApi}/stages/${self:custom.stage}
+        WebACLArn: ${ssm:/security/waf/api-acl-arn}
+      DependsOn: ApiGatewayDeployment${sls:instanceId}
+  Conditions:
+    AttachWafDirectly: !Equals ['${param:attachWaf, "false"}', 'true']

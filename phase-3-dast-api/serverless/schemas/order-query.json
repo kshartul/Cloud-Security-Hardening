@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "OrderQuery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fromDate", "toDate"],
+  "properties": {
+    "fromDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "toDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "status": { "type": "string", "enum": ["OPEN", "SHIPPED", "CLOSED"] },
+    "warehouseIds": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "type": "string", "pattern": "^[A-Z0-9-]{1,20}$" }
+    },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "nextToken": { "type": "string", "maxLength": 512 }
+  }
+}

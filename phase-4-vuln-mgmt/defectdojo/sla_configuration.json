@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Internet-facing / prod sensitive data",
+    "description": "Vulnerability Management Standard §4 — exposed column",
+    "critical": 7,
+    "enforce_critical": true,
+    "high": 30,
+    "enforce_high": true,
+    "medium": 90,
+    "enforce_medium": true,
+    "low": 180,
+    "enforce_low": true
+  },
+  {
+    "name": "Internal",
+    "description": "Vulnerability Management Standard §4 — internal column",
+    "critical": 15,
+    "enforce_critical": true,
+    "high": 45,
+    "enforce_high": true,
+    "medium": 120,
+    "enforce_medium": true,
+    "low": 365,
+    "enforce_low": true
+  }
+]

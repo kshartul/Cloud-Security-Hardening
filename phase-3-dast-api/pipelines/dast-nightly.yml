@@ -1,0 +1,25 @@
+# Nightly authenticated API DAST against staging for every tier-1 API (P3.8)
+trigger: none
+pr: none
+schedules:
+  - cron: '30 20 * * *'          # 02:00 IST
+    displayName: nightly-dast
+    branches: { include: [main] }
+    always: true
+
+resources:
+  repositories:
+    - repository: security
+      type: git
+      name: Platform/aws-security-hardening
+
+variables:
+  - group: security-scanners
+
+stages:
+  - template: templates/dast-zap.yml
+    parameters:
+      mode: api
+      targetUrl: https://api-stage.example.com
+      openapiUrl: https://api-stage.example.com/dw/openapi.json
+      failOnHigh: true

@@ -1,0 +1,22 @@
+# Org default Checkov config — repos may override with their own .checkov.yaml.
+# Every skip MUST carry a ticket reference and appears in docs/standards/suppression-register.md.
+framework:
+  - terraform
+  - serverless
+  - cloudformation
+  - secrets
+  - dockerfile
+skip-path:
+  - .serverless
+  - node_modules
+  - tests/fixtures
+skip-check:
+  - CKV_AWS_116   # Lambda DLQ: handled by EventBridge destination pattern (SEC-142)
+  - CKV_AWS_117   # Lambda in VPC: only functions with private egress need VPC (SEC-143, reviewed per function)
+  - CKV_AWS_173   # Lambda env encryption with CMK: env vars hold no secrets by policy (SEC-144)
+soft-fail-on:
+  - LOW
+compact: true
+quiet: true
+download-external-modules: true
+evaluate-variables: true

@@ -1,0 +1,44 @@
+# =============================================================================
+# templates/api-lint.yml — OpenAPI security lint gate (Phase 3, P3.2)
+# Spectral + OWASP API ruleset + org rules (.spectral.yaml). Errors fail the build.
+# =============================================================================
+parameters:
+  - name: openapiPath
+    type: string
+  - name: templateRepoAlias
+    type: string
+    default: security
+  - name: dependsOn
+    type: object
+    default: []
+
+stages:
+  - stage: ApiLint
+    displayName: OpenAPI security lint
+    dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - job: Spectral
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - checkout: self
+            path: s
+          - checkout: ${{ parameters.templateRepoAlias }}
+            path: security-templates
+            fetchDepth: 1
+          - task: NodeTool@0
+            inputs: { versionSpec: '20.x' }
+          - bash: |
+              set -euo pipefail
+              npm i -g @stoplight/spectral-cli@6 @stoplight/spectral-owasp-ruleset@2
+              RULESET=.spectral.yaml
+              [ -f "$RULESET" ] || RULESET="$(Agent.BuildDirectory)/security-templates/phase-3-dast-api/configs/.spectral.yaml"
+              mkdir -p "$(Build.ArtifactStagingDirectory)/security"
+              spectral lint "${{ parameters.openapiPath }}" --ruleset "$RULESET" --fail-severity error \
+                --format sarif --output "$(Build.ArtifactStagingDirectory)/security/spectral.sarif" \
+                --format stylish --output.stylish /dev/stdout
+            displayName: Spectral (OWASP API Top 10 ruleset)
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)/security
+              ArtifactName: CodeAnalysisLogs-api

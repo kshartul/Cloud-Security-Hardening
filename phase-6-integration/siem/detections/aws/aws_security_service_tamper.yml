@@ -1,0 +1,44 @@
+title: AWS Security Service Tamper Attempt
+id: 6f3b0e0a-1c2d-4f7a-9b11-0a1b2c3d4e02
+status: stable
+description: Attempts (successful or denied by SCP) to stop or delete CloudTrail, GuardDuty, Security Hub, Config, Access Analyzer, Inspector, or VPC flow logs.
+author: Cloud/DevOps Platform
+date: 2026/10/22
+tags:
+  - attack.defense_evasion
+  - attack.t1562.008
+  - kf.id.AWS-DEF-001
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    eventName:
+      - StopLogging
+      - DeleteTrail
+      - UpdateTrail
+      - PutEventSelectors
+      - DeleteDetector
+      - DisassociateFromAdministratorAccount
+      - DisableSecurityHub
+      - BatchDisableStandards
+      - StopConfigurationRecorder
+      - DeleteConfigurationRecorder
+      - DeleteDeliveryChannel
+      - DeleteAnalyzer
+      - DeleteFlowLogs
+      - Disable
+  filter_pipeline:
+    userIdentity.arn|contains:
+      - ':assumed-role/SecurityPipelineDeploy/'
+      - ':assumed-role/AWSControlTowerExecution/'
+  condition: selection and not filter_pipeline
+fields:
+  - recipientAccountId
+  - userIdentity.arn
+  - eventName
+  - errorCode
+  - sourceIPAddress
+falsepositives:
+  - Planned decommissioning under change control (should come from SecurityPipelineDeploy)
+level: critical

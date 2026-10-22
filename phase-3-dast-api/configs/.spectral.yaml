@@ -1,0 +1,79 @@
+# Org OpenAPI ruleset = OWASP API Top 10 + house rules
+extends:
+  - spectral:oas
+  - "@stoplight/spectral-owasp-ruleset"
+
+rules:
+  # OWASP ruleset tweaks
+  owasp:api4:2019-rate-limit: warn          # throttling lives in API GW usage plans, not headers
+  owasp:api4:2019-rate-limit-retry-after: off
+
+  # --- house rules ---
+  kf-security-on-every-operation:
+    description: Every operation must declare security (no anonymous routes unless x-public true)
+    severity: error
+    given: "$.paths[*][get,put,post,delete,patch]"
+    then:
+      - field: security
+        function: truthy
+
+  kf-no-api-key-auth:
+    description: API keys are not an authentication mechanism (API2)
+    severity: error
+    given: "$.components.securitySchemes[*]"
+    then:
+      field: type
+      function: pattern
+      functionOptions:
+        notMatch: "^apiKey$"
+
+  kf-request-body-additional-properties:
+    description: Request bodies must set additionalProperties false (API3 mass assignment)
+    severity: error
+    given: "$.paths[*][post,put,patch].requestBody.content[*].schema"
+    then:
+      field: additionalProperties
+      function: falsy
+
+  kf-array-max-items:
+    description: Arrays must be bounded (API4)
+    severity: error
+    given: "$..[?(@.type == 'array')]"
+    then:
+      field: maxItems
+      function: defined
+
+  kf-string-max-length:
+    description: Strings should be bounded (API4)
+    severity: warn
+    given: "$..[?(@.type == 'string' && !@.enum && !@.format)]"
+    then:
+      field: maxLength
+      function: defined
+
+  kf-owner-tag:
+    description: info.x-owner required for inventory (API9)
+    severity: error
+    given: "$.info"
+    then:
+      field: x-owner
+      function: truthy
+
+  kf-data-classification:
+    description: info.x-data-classification required (API9)
+    severity: error
+    given: "$.info"
+    then:
+      field: x-data-classification
+      function: enumeration
+      functionOptions:
+        values: [public, internal, confidential, restricted]
+
+  kf-https-servers-only:
+    description: Servers must use https (API8)
+    severity: error
+    given: "$.servers[*].url"
+    then:
+      function: pattern
+      functionOptions:
+        match: "^https://"

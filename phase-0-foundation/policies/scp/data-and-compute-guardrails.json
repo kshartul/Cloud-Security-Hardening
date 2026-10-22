@@ -1,0 +1,70 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RequireIMDSv2",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": { "StringNotEquals": { "ec2:MetadataHttpTokens": "required" } }
+    },
+    {
+      "Sid": "DenyIMDSv1Modification",
+      "Effect": "Deny",
+      "Action": "ec2:ModifyInstanceMetadataOptions",
+      "Resource": "*",
+      "Condition": { "StringNotEquals": { "ec2:MetadataHttpTokens": "required" } }
+    },
+    {
+      "Sid": "DenyUnencryptedS3PutObject",
+      "Effect": "Deny",
+      "Action": "s3:PutObject",
+      "Resource": "*",
+      "Condition": {
+        "Null": { "s3:x-amz-server-side-encryption": "false" },
+        "StringNotEquals": { "s3:x-amz-server-side-encryption": ["aws:kms", "aws:kms:dsse", "AES256"] }
+      }
+    },
+    {
+      "Sid": "DenyS3PublicAccessBlockRemoval",
+      "Effect": "Deny",
+      "Action": [
+        "s3:PutAccountPublicAccessBlock",
+        "s3:DeleteAccountPublicAccessBlock"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/SecurityBreakGlass", "arn:aws:iam::*:role/SecurityPipelineDeploy"] }
+      }
+    },
+    {
+      "Sid": "DenyEBSDefaultEncryptionDisable",
+      "Effect": "Deny",
+      "Action": "ec2:DisableEbsEncryptionByDefault",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyIAMUserAccessKeys",
+      "Effect": "Deny",
+      "Action": ["iam:CreateAccessKey", "iam:CreateLoginProfile", "iam:CreateUser"],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": { "aws:PrincipalArn": ["arn:aws:iam::*:role/SecurityBreakGlass", "arn:aws:iam::*:role/AWSControlTowerExecution"] }
+      }
+    },
+    {
+      "Sid": "DenyPublicLambdaUrlWithoutAuth",
+      "Effect": "Deny",
+      "Action": ["lambda:CreateFunctionUrlConfig", "lambda:UpdateFunctionUrlConfig"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "lambda:FunctionUrlAuthType": "NONE" } }
+    },
+    {
+      "Sid": "DenyRedshiftPublicCluster",
+      "Effect": "Deny",
+      "Action": ["redshift:CreateCluster", "redshift:ModifyCluster"],
+      "Resource": "*",
+      "Condition": { "Bool": { "redshift:PubliclyAccessible": "true" } }
+    }
+  ]
+}

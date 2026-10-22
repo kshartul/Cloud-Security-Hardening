@@ -1,0 +1,118 @@
+# =============================================================================
+# Pipeline for THIS repo: plan every stack on PR, scan, apply changed stacks with
+# environment approvals. Uses ADO workload identity federation (OIDC) — no keys.
+# Apply stages run in parallel after the plan; for a first-time build-out follow docs/DEPLOYMENT_ORDER.md
+# (or run the pipeline with one stack at a time). account-baseline runs from pipelines/account-baseline.yml.
+# =============================================================================
+trigger:
+  branches: { include: [main] }
+pr:
+  branches: { include: [main] }
+
+parameters:
+  - name: stacks
+    type: object
+    default:
+      # name                         path                                                    serviceConnection             environment
+      - { name: organization,       path: phase-0-foundation/terraform/stacks/organization,   sc: aws-mgmt-security-oidc,     env: aws-org }
+      - { name: log_archive,        path: phase-0-foundation/terraform/stacks/log-archive,    sc: aws-logarchive-oidc,        env: aws-org }
+      - { name: org_trail,          path: phase-0-foundation/terraform/stacks/org-trail,      sc: aws-mgmt-security-oidc,     env: aws-org }
+      - { name: identity_center,    path: phase-0-foundation/terraform/stacks/identity-center, sc: aws-mgmt-security-oidc,    env: aws-org }
+      - { name: delegated_admins,   path: phase-0-foundation/terraform/stacks/delegated-admins, sc: aws-mgmt-security-oidc,   env: aws-org }
+      - { name: security_tooling,   path: phase-1-detection/terraform/stacks/security-tooling, sc: aws-sectooling-oidc,       env: aws-security }
+      - { name: fms_waf,            path: phase-3-dast-api/terraform/stacks/fms-waf,          sc: aws-sectooling-oidc,        env: aws-security }
+      - { name: findings_routing,   path: phase-4-vuln-mgmt/terraform/stacks/findings-routing, sc: aws-sectooling-oidc,       env: aws-security }
+      - { name: security_lake,      path: phase-6-integration/terraform/stacks/security-lake, sc: aws-sectooling-oidc,        env: aws-org }
+      - { name: response,           path: phase-6-integration/terraform/stacks/response,      sc: aws-sectooling-oidc,        env: aws-security }
+
+variables:
+  TF_VERSION: '1.10.5'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: '0'
+
+stages:
+  - stage: Validate
+    jobs:
+      - job: Lint
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - checkout: self
+            fetchDepth: 0
+          - task: TerraformInstaller@1
+            inputs: { terraformVersion: $(TF_VERSION) }
+          - script: terraform fmt -check -recursive
+            displayName: terraform fmt
+          - script: |
+              pip install -q pytest boto3 requests
+              python -m pytest -q phase-3-dast-api/serverless/tests phase-4-vuln-mgmt/tests phase-6-integration/tests
+            displayName: Unit tests (authz, risk scoring, playbooks)
+          - script: |
+              pip install -q checkov
+              checkov -d . --framework terraform --config-file phase-2-secure-sdlc/configs/.checkov.yaml \
+                --skip-path phase-3-dast-api/serverless
+            displayName: Checkov on this repo
+          - script: |
+              GL_VER=8.21.2
+              curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VER}/gitleaks_${GL_VER}_linux_x64.tar.gz" | tar -xz gitleaks
+              ./gitleaks git . --config phase-2-secure-sdlc/configs/.gitleaks.toml --redact
+            displayName: Gitleaks on this repo
+
+  - stage: Plan
+    dependsOn: Validate
+    jobs:
+      - ${{ each s in parameters.stacks }}:
+        - job: plan_${{ s.name }}
+          displayName: plan ${{ s.name }}
+          pool: { vmImage: ubuntu-latest }
+          steps:
+            - checkout: self
+            - task: TerraformInstaller@1
+              inputs: { terraformVersion: $(TF_VERSION) }
+            - task: AWSShellScript@1
+              displayName: init + plan
+              inputs:
+                awsCredentials: ${{ s.sc }}
+                regionName: ap-south-1
+                scriptType: inline
+                inlineScript: |
+                  set -euo pipefail
+                  cd ${{ s.path }}
+                  terraform init -backend-config="$(Build.SourcesDirectory)/backend.hcl"
+                  terraform plan -out=tfplan -lock-timeout=5m
+                  terraform show -json tfplan > plan.json
+                  # IAM policy gate on the plan (Access Analyzer)
+                  pip install -q boto3
+                  python "$(Build.SourcesDirectory)/phase-2-secure-sdlc/scripts/check_iam_policies.py" --tf-plan plan.json \
+                    --out "$(Build.ArtifactStagingDirectory)/iam-${{ s.name }}.json" || echo "##vso[task.logissue type=warning]IAM findings — review"
+            - publish: ${{ s.path }}/tfplan
+              artifact: tfplan-${{ s.name }}
+
+  - ${{ each s in parameters.stacks }}:
+    - stage: apply_${{ s.name }}
+      displayName: apply ${{ s.name }}
+      dependsOn: Plan
+      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      jobs:
+        - deployment: apply
+          environment: ${{ s.env }}          # approvals + business-hours check configured on the ADO environment
+          pool: { vmImage: ubuntu-latest }
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                  - download: current
+                    artifact: tfplan-${{ s.name }}
+                  - task: TerraformInstaller@1
+                    inputs: { terraformVersion: $(TF_VERSION) }
+                  - task: AWSShellScript@1
+                    displayName: apply saved plan
+                    inputs:
+                      awsCredentials: ${{ s.sc }}
+                      regionName: ap-south-1
+                      scriptType: inline
+                      inlineScript: |
+                        set -euo pipefail
+                        cd ${{ s.path }}
+                        terraform init -backend-config="$(Build.SourcesDirectory)/backend.hcl"
+                        terraform apply -lock-timeout=5m "$(Pipeline.Workspace)/tfplan-${{ s.name }}/tfplan"

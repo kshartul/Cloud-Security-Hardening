@@ -1,0 +1,107 @@
+{
+  "Comment": "Generic SOAR remediation: run playbook; if it (or the trigger) requires approval, wait for on-call approval via Security Hub custom action, then run with approved=true.",
+  "StartAt": "Init",
+  "States": {
+    "Init": {
+      "Type": "Pass",
+      "Parameters": {
+        "playbook.$": "$.playbook",
+        "alwaysApproval.$": "$.alwaysApproval",
+        "event.$": "$.event",
+        "approved": false
+      },
+      "Next": "ApprovalUpfront?"
+    },
+    "ApprovalUpfront?": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.alwaysApproval", "BooleanEquals": true, "Next": "RequestApproval" }],
+      "Default": "RunPlaybook"
+    },
+    "RunPlaybook": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName.$": "$.playbook",
+        "Payload": {
+          "detail.$": "$.event.detail",
+          "approved.$": "$.approved"
+        }
+      },
+      "ResultSelector": { "result.$": "$.Payload" },
+      "ResultPath": "$.run",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "NeedsApproval?"
+    },
+    "NeedsApproval?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.run.result.action", "StringEquals": "needs-approval" },
+            { "Variable": "$.approved", "BooleanEquals": false }
+          ],
+          "Next": "RequestApproval"
+        }
+      ],
+      "Default": "Done"
+    },
+    "RequestApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${request_approval_arn}",
+        "Payload": {
+          "token.$": "$$.Task.Token",
+          "event.$": "$.event",
+          "playbook.$": "$.playbook"
+        }
+      },
+      "TimeoutSeconds": 14400,
+      "ResultPath": "$.approval",
+      "Catch": [
+        { "ErrorEquals": ["States.Timeout"], "ResultPath": "$.error", "Next": "Escalate" },
+        { "ErrorEquals": ["Rejected"], "ResultPath": "$.error", "Next": "Rejected" },
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }
+      ],
+      "Next": "MarkApproved"
+    },
+    "MarkApproved": {
+      "Type": "Pass",
+      "Result": true,
+      "ResultPath": "$.approved",
+      "Next": "RunPlaybook"
+    },
+    "Escalate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${pager_topic_arn}",
+        "Subject": "SOAR approval timed out — manual response required",
+        "Message.$": "States.JsonToString($.event)"
+      },
+      "Next": "TimedOut"
+    },
+    "TimedOut": { "Type": "Fail", "Error": "ApprovalTimeout", "Cause": "No approval within 4 hours" },
+    "Rejected": { "Type": "Succeed", "Comment": "On-call rejected the automated action; IR continues manually" },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${pager_topic_arn}",
+        "Subject": "SOAR playbook failed",
+        "Message.$": "States.JsonToString($)"
+      },
+      "Next": "Failed"
+    },
+    "Failed": { "Type": "Fail", "Error": "PlaybookFailed" },
+    "Done": { "Type": "Succeed" }
+  }
+}

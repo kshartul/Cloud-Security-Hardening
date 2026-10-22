@@ -1,0 +1,113 @@
+# =============================================================================
+# templates/dast-zap.yml — OWASP ZAP DAST stage (Phase 3)
+#   mode: baseline  -> passive spider + passive rules, after every staging deploy (warn)
+#   mode: api       -> active API scan from OpenAPI, authenticated, nightly (fail on HIGH)
+# =============================================================================
+parameters:
+  - name: mode
+    type: string
+    default: baseline
+    values: [baseline, api]
+  - name: targetUrl
+    type: string
+  - name: openapiUrl
+    type: string
+    default: ''
+  - name: failOnHigh
+    type: boolean
+    default: true
+  - name: cognitoSecretId
+    type: string
+    default: /security/dast/cognito-test-client   # Secrets Manager: {"user_pool_id","client_id","client_secret","username","password","region"}
+  - name: awsServiceConnection
+    type: string
+    default: aws-omni-stage-dast-oidc
+  - name: templateRepoAlias
+    type: string
+    default: security
+  - name: dependsOn
+    type: object
+    default: []
+
+stages:
+  - stage: DAST_${{ parameters.mode }}
+    displayName: DAST (ZAP ${{ parameters.mode }})
+    dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - job: Zap
+        timeoutInMinutes: 90
+        pool: { vmImage: ubuntu-latest }
+        variables:
+          ZAP_DIR: $(Build.ArtifactStagingDirectory)/zap
+          SEC_TOOLS: $(Agent.BuildDirectory)/security-templates/phase-3-dast-api
+        steps:
+          - checkout: ${{ parameters.templateRepoAlias }}
+            path: security-templates
+            fetchDepth: 1
+
+          - bash: |
+              mkdir -p "$(ZAP_DIR)"
+              cp "$(SEC_TOOLS)/configs/zap-rules.conf" "$(ZAP_DIR)/zap-rules.conf"
+              chmod -R 777 "$(ZAP_DIR)"
+            displayName: Prepare ZAP workspace
+
+          - ${{ if eq(parameters.mode, 'baseline') }}:
+            - bash: |
+                set -uo pipefail
+                docker run --rm -v "$(ZAP_DIR)":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable \
+                  zap-baseline.py -t "${{ parameters.targetUrl }}" -c zap-rules.conf \
+                  -J zap-report.json -x zap-report.xml -r zap-report.html -I
+                # -I : never fail on warnings — baseline is informational per deploy
+              displayName: ZAP baseline (passive)
+
+          - ${{ if eq(parameters.mode, 'api') }}:
+            - task: AWSShellScript@1
+              displayName: Fetch short-lived test token (Cognito)
+              inputs:
+                awsCredentials: ${{ parameters.awsServiceConnection }}
+                regionName: ap-south-1
+                scriptType: inline
+                inlineScript: |
+                  set -euo pipefail
+                  pip install --quiet boto3
+                  TOKEN=$(python "$(SEC_TOOLS)/scripts/get_cognito_token.py" --secret-id "${{ parameters.cognitoSecretId }}")
+                  echo "##vso[task.setvariable variable=STAGE_TOKEN;issecret=true]$TOKEN"
+
+            - bash: |
+                set -uo pipefail
+                docker run --rm -v "$(ZAP_DIR)":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable \
+                  zap-api-scan.py -t "${{ parameters.openapiUrl }}" -f openapi \
+                  -c zap-rules.conf -J zap-report.json -x zap-report.xml -r zap-report.html \
+                  -z "-config replacer.full_list(0).description=auth \
+                      -config replacer.full_list(0).enabled=true \
+                      -config replacer.full_list(0).matchtype=REQ_HEADER \
+                      -config replacer.full_list(0).matchstr=Authorization \
+                      -config replacer.full_list(0).regex=false \
+                      -config replacer.full_list(0).replacement=Bearer\ $STAGE_TOKEN"
+                rc=$?
+                # zap exit codes: 0 pass, 1 FAIL rules hit, 2 WARN only, 3 error
+                if [ $rc -eq 1 ] && [ "${{ lower(parameters.failOnHigh) }}" = "true" ]; then
+                  echo "##vso[task.logissue type=error]ZAP reported FAIL-level alerts (see zap-rules.conf)"; exit 1
+                fi
+                [ $rc -eq 3 ] && { echo "##vso[task.logissue type=error]ZAP error"; exit 1; }
+                exit 0
+              displayName: ZAP API scan (active, authenticated)
+              env:
+                STAGE_TOKEN: $(STAGE_TOKEN)
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              PathtoPublish: $(ZAP_DIR)
+              ArtifactName: dast-zap-${{ parameters.mode }}
+
+          - bash: |
+              pip install --quiet requests
+              python "$(Agent.BuildDirectory)/security-templates/phase-2-secure-sdlc/scripts/push_to_defectdojo.py" \
+                --reports "$(ZAP_DIR)" --product "$(Build.Repository.Name)" \
+                --engagement "DAST-${{ parameters.mode }}" --build-id "$(Build.BuildId)" || true
+            condition: always()
+            displayName: Upload to DefectDojo
+            env:
+              DD_URL: $(DEFECTDOJO_URL)
+              DD_API_KEY: $(DEFECTDOJO_API_KEY)

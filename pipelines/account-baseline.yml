@@ -1,0 +1,52 @@
+# Applies phase-0 account-baseline (defaults, KMS domain keys, remediation/read-only/Prowler roles)
+# to every account — one Terraform workspace per account. Run after account vending and on change.
+trigger:
+  branches: { include: [main] }
+  paths:
+    include:
+      - phase-0-foundation/terraform/modules/account-defaults/*
+      - phase-0-foundation/terraform/stacks/account-baseline/*
+      - phase-6-integration/terraform/modules/remediation-role/*
+
+parameters:
+  - name: accounts
+    type: object
+    default:
+      - { name: omni-dw-dev,     id: '444444444440', workload: true }
+      - { name: omni-dw-stage,   id: '444444444444', workload: true }
+      - { name: omni-dw-prod,    id: '444444444449', workload: true }
+      - { name: omni-wms-dev,    id: '555555555550', workload: true }
+      - { name: omni-wms-stage,  id: '555555555555', workload: true }
+      - { name: omni-wms-prod,   id: '555555555559', workload: true }
+      - { name: log-archive,     id: '333333333333', workload: false }
+      - { name: security-tooling, id: '222222222222', workload: false }
+
+stages:
+  - ${{ each a in parameters.accounts }}:
+    - stage: baseline_${{ replace(a.name, '-', '_') }}
+      displayName: baseline ${{ a.name }}
+      dependsOn: []
+      jobs:
+        - deployment: apply
+          environment: ${{ iif(contains(a.name, 'prod'), 'aws-prod', 'aws-nonprod') }}
+          pool: { vmImage: ubuntu-latest }
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                  - task: TerraformInstaller@1
+                    inputs: { terraformVersion: '1.10.5' }
+                  - task: AWSShellScript@1
+                    inputs:
+                      awsCredentials: aws-sectooling-oidc   # assumes SecurityPipelineDeploy in target via provider
+                      regionName: ap-south-1
+                      scriptType: inline
+                      inlineScript: |
+                        set -euo pipefail
+                        cd phase-0-foundation/terraform/stacks/account-baseline
+                        terraform init -backend-config="$(Build.SourcesDirectory)/backend.hcl"
+                        terraform workspace select -or-create ${{ a.name }}
+                        terraform apply -auto-approve \
+                          -var target_account_id=${{ a.id }} \
+                          -var is_workload_account=${{ a.workload }}

@@ -1,0 +1,291 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1275" width="1600" height="1275" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3B4252"/>
+    </marker>
+    <style>
+      .t  { font-size: 12px; fill: #1F2328; }
+      .s  { font-size: 10.5px; fill: #3D4450; }
+      .xs { font-size: 10px; fill: #4A5160; }
+      .h  { font-size: 13px; font-weight: 700; fill: #111827; }
+      .b  { font-size: 11.5px; font-weight: 700; fill: #111827; }
+      .c  { text-anchor: middle; }
+      .ln { stroke: #3B4252; stroke-width: 1.6; fill: none; }
+      .lbl{ font-size: 10px; fill: #3B4252; font-style: italic; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="1275" fill="#FBFBF8"/>
+
+  <!-- Title -->
+  <text x="40" y="38" style="font-size:22px;font-weight:700;fill:#111827">AWS Security Hardening — Target Architecture</text>
+  <text x="40" y="60" class="t">Organization-wide delegated-admin security services · shift-left in Azure DevOps · one findings funnel → Jira / SIEM / SOAR</text>
+  <text x="1560" y="38" class="xs" text-anchor="end">P0–P6 = implementation phase · arrows = data / control flow</text>
+
+  <!-- ===== Row A: Identity + Azure DevOps ===== -->
+  <rect x="40" y="80" width="260" height="150" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="56" y="104" class="h">Enterprise identity</text>
+  <text x="56" y="130" class="t">Entra ID / Okta</text>
+  <text x="56" y="150" class="s">SAML SSO + SCIM provisioning</text>
+  <text x="56" y="170" class="s">MFA enforced · 8 h / 4 h prod admin</text>
+  <text x="56" y="190" class="s">Sign-in + MFA logs → SIEM</text>
+  <text x="56" y="210" class="s">IdP ↔ AWS correlation (P6)</text>
+
+  <rect x="330" y="80" width="1230" height="150" rx="10" fill="#E6F0FA" stroke="#0B5CAD" stroke-width="1.5"/>
+  <text x="346" y="104" class="h">Azure DevOps — reusable security stage templates/security-scan.yml (P2) + DAST / API lint (P3)</text>
+
+  <g>
+    <rect x="350"  y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="420"  y="141" class="b c">Pre-commit</text><text x="420"  y="159" class="xs c">gitleaks · checkov</text>
+    <rect x="500"  y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="570"  y="141" class="b c">Secrets</text><text x="570"  y="159" class="xs c">Gitleaks (full + per PR)</text>
+    <rect x="650"  y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="720"  y="141" class="b c">SAST</text><text x="720"  y="159" class="xs c">Semgrep · Bandit · Sonar</text>
+    <rect x="800"  y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="870"  y="141" class="b c">SCA + SBOM</text><text x="870"  y="159" class="xs c">Trivy fs · Syft CycloneDX</text>
+    <rect x="950"  y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="1020" y="141" class="b c">IaC + IAM policy</text><text x="1020" y="159" class="xs c">Checkov · tfsec · cfn-nag</text>
+    <rect x="1100" y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="1170" y="141" class="b c">API spec lint</text><text x="1170" y="159" class="xs c">Spectral · 42Crunch</text>
+    <rect x="1250" y="115" width="140" height="62" rx="7" fill="#DCEBFA" stroke="#0B5CAD"/>
+    <text x="1320" y="141" class="b c">Deploy</text><text x="1320" y="159" class="xs c">OIDC → deploy role</text>
+    <rect x="1400" y="115" width="140" height="62" rx="7" fill="#fff" stroke="#0B5CAD"/>
+    <text x="1470" y="141" class="b c">DAST</text><text x="1470" y="159" class="xs c">ZAP API scan · Nuclei</text>
+    <path class="ln" d="M490,146 H499" marker-end="url(#arr)"/>
+    <path class="ln" d="M640,146 H649" marker-end="url(#arr)"/>
+    <path class="ln" d="M790,146 H799" marker-end="url(#arr)"/>
+    <path class="ln" d="M940,146 H949" marker-end="url(#arr)"/>
+    <path class="ln" d="M1090,146 H1099" marker-end="url(#arr)"/>
+    <path class="ln" d="M1240,146 H1249" marker-end="url(#arr)"/>
+    <path class="ln" d="M1390,146 H1399" marker-end="url(#arr)"/>
+  </g>
+  <text x="350" y="205" class="s">All results as SARIF → ADO + DefectDojo · diff-aware gates fail only on NEW critical/high · 2 weeks report-only, then enforce · SBOM → Dependency-Track</text>
+  <text x="350" y="221" class="s">Branch policy: security stage required · security-champion reviewer on IAM / auth / crypto changes · threat models (STRIDE, Threat Dragon) stored in repo</text>
+
+  <!-- ===== AWS Organization frame ===== -->
+  <rect x="40" y="262" width="1520" height="818" rx="12" fill="#FFFFFF" stroke="#232F3E" stroke-width="2"/>
+  <text x="56" y="287" class="h">AWS Organization — Control Tower landing zone · SCPs on every OU · home region ap-south-1 with cross-region aggregation</text>
+
+  <!-- Management -->
+  <rect x="65" y="305" width="330" height="230" rx="10" fill="#F2F2EE" stroke="#6B6B6B" stroke-width="1.5"/>
+  <text x="81" y="329" class="h">Management account (P0)</text>
+  <text x="81" y="356" class="t">Organizations + Control Tower v3.x</text>
+  <text x="81" y="378" class="t">SCP library: protect security services,</text>
+  <text x="81" y="395" class="s">  region deny · IMDSv2 · deny leave-org · root deny</text>
+  <text x="81" y="418" class="t">IAM Identity Center ← Entra ID / Okta</text>
+  <text x="81" y="435" class="s">  permission sets · MFA · SecurityBreakGlass role</text>
+  <text x="81" y="458" class="t">Org CloudTrail: multi-region, mgmt +</text>
+  <text x="81" y="475" class="s">  S3 / Lambda data events · log file validation</text>
+  <text x="81" y="498" class="t">Budgets · cost category "Security"</text>
+  <text x="81" y="518" class="s">No workloads in this account</text>
+
+  <!-- Log Archive -->
+  <rect x="65" y="555" width="330" height="280" rx="10" fill="#E8F1FB" stroke="#2E73B8" stroke-width="1.5"/>
+  <text x="81" y="579" class="h">Log Archive account (P0, P6)</text>
+  <text x="81" y="606" class="t">S3 Object Lock (compliance, 365 d) — org trail</text>
+  <text x="81" y="628" class="t">Config snapshots + history</text>
+  <text x="81" y="652" class="b">Amazon Security Lake (OCSF)</text>
+  <text x="81" y="669" class="s">  CloudTrail · VPC Flow · Route 53 · Security Hub · Lambda</text>
+  <text x="81" y="692" class="t">Firehose: WAF + API GW access logs</text>
+  <text x="81" y="709" class="s">  → Security Lake custom source</text>
+  <text x="81" y="732" class="t">GuardDuty findings export (15 min)</text>
+  <text x="81" y="755" class="t">KMS CMK (logs) · 365 d hot → Glacier</text>
+  <text x="81" y="778" class="s">Bucket policy: deny delete, deny non-TLS,</text>
+  <text x="81" y="794" class="s">deny PutObject without SSE-KMS</text>
+
+  <!-- Forensics -->
+  <rect x="65" y="855" width="330" height="200" rx="10" fill="#F6EFE6" stroke="#9A6A2E" stroke-width="1.5"/>
+  <text x="81" y="879" class="h">Forensics account (P6)</text>
+  <text x="81" y="906" class="t">Isolated VPC, no internet egress</text>
+  <text x="81" y="928" class="t">EBS snapshot copies (KMS re-encrypt)</text>
+  <text x="81" y="950" class="t">Analyst roles via Identity Center</text>
+  <text x="81" y="972" class="t">Detective · IR runbooks · tabletop / qtr</text>
+  <text x="81" y="994" class="s">Pre-provisioned, time-boxed responder roles</text>
+
+  <!-- Security Tooling -->
+  <rect x="420" y="305" width="700" height="750" rx="10" fill="#FDF0EE" stroke="#C7372F" stroke-width="1.8"/>
+  <text x="436" y="329" class="h">Security Tooling account — delegated admin for every security service (P1, P4, P6)</text>
+
+  <g>
+    <rect x="445" y="345" width="121" height="62" rx="7" fill="#fff" stroke="#C7372F"/>
+    <text x="505.5" y="366" class="b c">GuardDuty</text><text x="505.5" y="382" class="xs c">threat detection</text><text x="505.5" y="397" class="xs c">S3 · Lambda · RDS</text>
+    <rect x="576" y="345" width="121" height="62" rx="7" fill="#fff" stroke="#C7372F"/>
+    <text x="636.5" y="366" class="b c">Inspector</text><text x="636.5" y="382" class="xs c">vulnerability scan</text><text x="636.5" y="397" class="xs c">EC2·ECR·Lambda code</text>
+    <rect x="707" y="345" width="121" height="62" rx="7" fill="#fff" stroke="#C7372F"/>
+    <text x="767.5" y="366" class="b c">AWS Config</text><text x="767.5" y="382" class="xs c">org aggregator</text><text x="767.5" y="397" class="xs c">conformance packs</text>
+    <rect x="838" y="345" width="121" height="62" rx="7" fill="#fff" stroke="#C7372F"/>
+    <text x="898.5" y="366" class="b c">Macie</text><text x="898.5" y="382" class="xs c">sensitive data</text><text x="898.5" y="397" class="xs c">S3 PII discovery</text>
+    <rect x="969" y="345" width="121" height="62" rx="7" fill="#fff" stroke="#C7372F"/>
+    <text x="1029.5" y="366" class="b c">Access Analyzer</text><text x="1029.5" y="382" class="xs c">external + unused</text><text x="1029.5" y="397" class="xs c">CI policy checks</text>
+  </g>
+  <path class="ln" d="M505.5,407 V422 M636.5,407 V422 M767.5,407 V422 M898.5,407 V422 M1029.5,407 V422 M505.5,422 H1029.5"/>
+  <path class="ln" d="M770,422 V436" marker-end="url(#arr)"/>
+
+  <rect x="445" y="437" width="145" height="100" rx="8" fill="#fff" stroke="#C7372F"/>
+  <text x="517.5" y="475" class="b c">Amazon Detective</text>
+  <text x="517.5" y="493" class="xs c">investigation graph</text>
+  <text x="517.5" y="508" class="xs c">for GD + SH findings</text>
+
+  <rect x="605" y="437" width="490" height="100" rx="10" fill="#C7372F" stroke="#8E1F19" stroke-width="1.5"/>
+  <text x="850" y="466" class="c" style="font-size:16px;font-weight:700;fill:#fff">AWS Security Hub — single pane (CSPM + findings)</text>
+  <text x="850" y="487" class="c" style="font-size:11px;fill:#FFECEA">central configuration policy per OU · FSBP + CIS v3.0 · consolidated controls</text>
+  <text x="850" y="505" class="c" style="font-size:11px;fill:#FFECEA">cross-region aggregator → ap-south-1 · automation rules (suppress / raise severity)</text>
+  <text x="850" y="523" class="c" style="font-size:11px;fill:#FFECEA">target FSBP score ≥ 90%</text>
+
+  <rect x="445" y="562" width="310" height="70" rx="8" fill="#fff" stroke="#C7372F"/>
+  <text x="461" y="583" class="b">DefectDojo (ECS Fargate + RDS, SSO)</text>
+  <text x="461" y="600" class="xs">SAST · SCA · IaC · DAST · pen-test findings</text>
+  <text x="461" y="615" class="xs">dedupe · SLA config · Jira bidirectional sync</text>
+
+  <rect x="785" y="562" width="310" height="70" rx="8" fill="#fff" stroke="#C7372F"/>
+  <text x="801" y="583" class="b">AWS Firewall Manager</text>
+  <text x="801" y="600" class="xs">org WAF policy on every API Gateway stage</text>
+  <text x="801" y="615" class="xs">+ CloudFront · security-group audit</text>
+
+  <rect x="445" y="652" width="310" height="60" rx="8" fill="#fff" stroke="#C7372F"/>
+  <text x="461" y="673" class="b">Terraform state (S3, KMS, native lockfile)</text>
+  <text x="461" y="692" class="xs">ADO OIDC → SecurityPipelineDeploy roles</text>
+
+  <rect x="785" y="652" width="310" height="60" rx="8" fill="#fff" stroke="#C7372F"/>
+  <text x="801" y="673" class="b">Dependency-Track · exception-expiry Lambda</text>
+  <text x="801" y="692" class="xs">KPI snapshot → CloudWatch · Audit Manager evidence</text>
+
+  <path class="ln" d="M770,537 V741" marker-end="url(#arr)"/>
+
+  <rect x="445" y="742" width="650" height="46" rx="8" fill="#FFE4CC" stroke="#C25B00" stroke-width="1.5"/>
+  <text x="770" y="762" class="b c">Amazon EventBridge — security findings bus</text>
+  <text x="770" y="779" class="xs c">rule: Severity in [CRITICAL, HIGH] · Workflow = NEW · RecordState = ACTIVE (+ GuardDuty, Config, Macie events)</text>
+
+  <path class="ln" d="M550,788 V817 M770,788 V817 M990,788 V817"/>
+  <path class="ln" d="M550,808 V817" marker-end="url(#arr)"/>
+  <path class="ln" d="M770,808 V817" marker-end="url(#arr)"/>
+  <path class="ln" d="M990,808 V817" marker-end="url(#arr)"/>
+
+  <rect x="445" y="818" width="210" height="130" rx="8" fill="#fff" stroke="#C25B00" stroke-width="1.5"/>
+  <text x="461" y="840" class="b">Findings router (Lambda)</text>
+  <text x="461" y="861" class="xs">EPSS + CISA KEV enrichment</text>
+  <text x="461" y="879" class="xs">risk = CVSS × KEV × EPSS ×</text>
+  <text x="461" y="894" class="xs">  exposure × criticality</text>
+  <text x="461" y="912" class="xs">owner tag → Jira SECVULN</text>
+  <text x="461" y="930" class="xs">workflow → NOTIFIED</text>
+
+  <rect x="665" y="818" width="210" height="130" rx="8" fill="#fff" stroke="#C25B00" stroke-width="1.5"/>
+  <text x="681" y="840" class="b">Notify</text>
+  <text x="681" y="861" class="xs">AWS Chatbot → Teams / Slack</text>
+  <text x="681" y="879" class="xs">API destination → PagerDuty</text>
+  <text x="681" y="897" class="xs">channel per severity</text>
+  <text x="681" y="915" class="xs">MTTA target &lt; 15 min</text>
+
+  <rect x="885" y="818" width="210" height="130" rx="8" fill="#fff" stroke="#C25B00" stroke-width="1.5"/>
+  <text x="901" y="840" class="b">SOAR playbooks</text>
+  <text x="901" y="861" class="xs">Step Functions + Lambda</text>
+  <text x="901" y="879" class="xs">S3 BPA · key deactivate · SG</text>
+  <text x="901" y="897" class="xs">EC2 isolate · Lambda URL auth</text>
+  <text x="901" y="915" class="xs">human approval step in prod</text>
+
+
+  <!-- Workloads -->
+  <rect x="1145" y="305" width="395" height="750" rx="10" fill="#EAF6EE" stroke="#2F8A4A" stroke-width="1.8"/>
+  <text x="1161" y="329" class="h">Workloads OU — Dev / Stage / Prod accounts</text>
+
+  <rect x="1165" y="345" width="355" height="52" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="366" class="b">AWS WAF (pushed by Firewall Manager)</text>
+  <text x="1181" y="384" class="xs">managed rules · rate 2000 req / 5 min · IP reputation · logs</text>
+  <path class="ln" d="M1342,397 V414" marker-end="url(#arr)"/>
+
+  <rect x="1165" y="415" width="355" height="72" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="434" class="b">API Gateway (P3)</text>
+  <text x="1181" y="450" class="xs">Cognito / JWT authorizer + scopes on every route</text>
+  <text x="1181" y="465" class="xs">request validators · throttling · TLS 1.2 · mTLS B2B</text>
+  <text x="1181" y="480" class="xs">JSON access logs · X-Ray · private APIs for internal</text>
+  <path class="ln" d="M1342,487 V504" marker-end="url(#arr)"/>
+
+  <rect x="1165" y="505" width="355" height="55" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="526" class="b">Lambda (Serverless Framework v3)</text>
+  <text x="1181" y="544" class="xs">least-privilege role · reserved concurrency · BOLA checks</text>
+
+  <rect x="1165" y="578" width="355" height="44" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="596" class="b">DMS (CDC) → Redshift</text>
+  <text x="1181" y="612" class="xs">KMS (dw) · SSL endpoints · no public replication instances</text>
+
+  <rect x="1165" y="640" width="355" height="44" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="658" class="b">S3 data lake / DW staging</text>
+  <text x="1181" y="674" class="xs">Block Public Access · SSE-KMS · Macie discovery</text>
+
+  <rect x="1165" y="702" width="355" height="44" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="720" class="b">Secrets Manager · SSM SecureString</text>
+  <text x="1181" y="736" class="xs">rotation Lambdas · no secrets in serverless.yml</text>
+
+  <rect x="1165" y="764" width="355" height="44" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1181" y="782" class="b">Egress: NAT + Network Firewall</text>
+  <text x="1181" y="798" class="xs">domain allow-list for VPC Lambdas (SSRF / API7)</text>
+
+  <rect x="1165" y="826" width="355" height="50" rx="7" fill="#fff" stroke="#2F8A4A" stroke-dasharray="5 4"/>
+  <text x="1181" y="846" class="b">Member: GuardDuty · Inspector · Config · SH</text>
+  <text x="1181" y="864" class="xs">auto-enabled by delegated admin; SCP prevents disabling</text>
+
+  <rect x="1165" y="905" width="111" height="128" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1220.5" y="940" class="b c">Dev OU</text><text x="1220.5" y="960" class="xs c">gates: audit</text><text x="1220.5" y="975" class="xs c">→ enforce</text>
+  <rect x="1287" y="905" width="111" height="128" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1342.5" y="940" class="b c">Stage OU</text><text x="1342.5" y="960" class="xs c">nightly DAST</text><text x="1342.5" y="975" class="xs c">pen-test target</text>
+  <rect x="1409" y="905" width="111" height="128" rx="7" fill="#fff" stroke="#2F8A4A"/>
+  <text x="1464.5" y="940" class="b c">Prod OU</text><text x="1464.5" y="960" class="xs c">WAF in block</text><text x="1464.5" y="975" class="xs c">CAB approval</text>
+
+  <!-- ===== Enterprise integrations (bottom) ===== -->
+  <rect x="65" y="1110" width="330" height="100" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="81" y="1133" class="h">SIEM (P6)</text>
+  <text x="81" y="1153" class="t">Splunk · Sentinel · OpenSearch</text>
+  <text x="81" y="1171" class="s">Security Lake subscriber · MITRE ATT&amp;CK detections</text>
+  <text x="81" y="1188" class="s">+ Entra / Okta sign-in correlation</text>
+
+  <rect x="445" y="1110" width="210" height="100" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="461" y="1133" class="h">Jira SECVULN</text>
+  <text x="461" y="1153" class="s">/ ServiceNow SecOps</text>
+  <text x="461" y="1171" class="s">CVE · CVSS · EPSS · SLA due</text>
+  <text x="461" y="1188" class="s">bidirectional status sync</text>
+
+  <rect x="665" y="1110" width="210" height="100" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="681" y="1133" class="h">Teams / Slack</text>
+  <text x="681" y="1153" class="s">PagerDuty / Opsgenie</text>
+  <text x="681" y="1171" class="s">critical GuardDuty, root login</text>
+  <text x="681" y="1188" class="s">real-time, per-severity channels</text>
+
+  <rect x="885" y="1110" width="210" height="100" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="901" y="1133" class="h">Pen-test vendor (P5)</text>
+  <text x="901" y="1153" class="s">annual + major releases</text>
+  <text x="901" y="1171" class="s">RoE · time-boxed review role</text>
+  <text x="901" y="1188" class="s">findings → DefectDojo</text>
+
+  <rect x="1165" y="1110" width="355" height="100" rx="10" fill="#F1ECFA" stroke="#6B4FBB" stroke-width="1.5"/>
+  <text x="1181" y="1133" class="h">App teams &amp; security champions</text>
+  <text x="1181" y="1153" class="s">fix within SLA · own threat models</text>
+  <text x="1181" y="1171" class="s">verify-by-rescan auto-closes tickets</text>
+  <text x="1181" y="1188" class="s">exceptions ≤ 90 days, CISO-delegate approval</text>
+
+  <!-- ===== Cross-boundary flows ===== -->
+  <path class="ln" d="M170,230 V304" marker-end="url(#arr)"/>
+  <text x="178" y="252" class="lbl">SAML + SCIM</text>
+
+  <path class="ln" d="M230,535 V554" marker-end="url(#arr)"/>
+
+  <path class="ln" d="M1320,177 V304" marker-end="url(#arr)"/>
+  <text x="1327" y="250" class="lbl">deploy (OIDC role)</text>
+
+  <path class="ln" d="M1470,177 V248 H1530 V451 H1521" marker-end="url(#arr)"/>
+  <text x="1500" y="243" class="lbl c">DAST</text>
+
+  <path class="ln" d="M1165,851 H1127 V487 H1096" marker-end="url(#arr)"/>
+  <text x="1132" y="680" class="lbl" transform="rotate(-90 1132 680)">findings (ASFF)</text>
+
+  <path class="ln" d="M1095,930 H1164" marker-end="url(#arr)"/>
+  <text x="1130" y="924" class="lbl c">remediate</text>
+
+  <path class="ln" d="M395,659 H407 V1092 H230 V1109" marker-end="url(#arr)"/>
+  <text x="413" y="1074" class="lbl">OCSF</text>
+
+  <path class="ln" d="M550,948 V1109" marker-end="url(#arr)"/>
+  <path class="ln" d="M770,948 V1109" marker-end="url(#arr)"/>
+
+  <path class="ln" d="M550,1210 V1240 H1342 V1211" marker-end="url(#arr)"/>
+  <text x="946" y="1258" class="lbl c">SLA-tracked tickets routed by owner / team tag</text>
+</svg>

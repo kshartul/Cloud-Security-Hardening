@@ -1,0 +1,28 @@
+title: Azure DevOps OIDC Deploy Role Used From Unexpected Subject Or Source
+id: 6f3b0e0a-1c2d-4f7a-9b11-0a1b2c3d4e06
+status: experimental
+description: AssumeRoleWithWebIdentity into a deploy role where the token subject is not an approved service connection, or the call does not originate from Azure DevOps.
+author: Cloud/DevOps Platform
+date: 2026/10/22
+tags:
+  - attack.initial_access
+  - attack.t1199
+  - kf.id.AWS-CICD-001
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    eventSource: sts.amazonaws.com
+    eventName: AssumeRoleWithWebIdentity
+    requestParameters.roleArn|contains:
+      - ':role/SecurityPipelineDeploy'
+      - ':role/omni-deploy-'
+  filter_known_subjects:
+    userIdentity.userName|startswith:
+      - 'sc://korn-ferry/Omni/'          # ADO workload identity federation subject prefix (org/project/service-connection)
+      - 'sc://korn-ferry/Platform/'
+  condition: selection and not filter_known_subjects
+falsepositives:
+  - New service connection not yet added to the allow-list
+level: high

@@ -1,0 +1,96 @@
+# Example consumer: omni-dw-api-services (Serverless Framework v3, Python Lambdas)
+trigger:
+  branches: { include: [main] }
+pr:
+  branches: { include: [main, release/*] }
+
+resources:
+  repositories:
+    - repository: security
+      type: git
+      name: Platform/aws-security-hardening
+      ref: refs/tags/security-templates-v1.0.0   # pin; bump via PR
+
+variables:
+  - group: security-scanners          # DEFECTDOJO_URL, DEFECTDOJO_API_KEY (Key Vault-linked)
+  - name: STAGE
+    value: dev
+
+stages:
+  - stage: Build
+    jobs:
+      - job: Test
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: UsePythonVersion@0
+            inputs: { versionSpec: '3.12' }
+          - script: |
+              pip install -r requirements-dev.txt
+              pytest -q --junitxml=test-results.xml --cov=src --cov-report=xml
+            displayName: Unit tests (incl. authz / BOLA tests)
+          - task: PublishTestResults@2
+            condition: always()
+            inputs: { testResultsFiles: test-results.xml }
+
+  # ---- Security gate (Phase 2) ----
+  - template: phase-2-secure-sdlc/pipelines/templates/security-scan.yml@security
+    parameters:
+      failOnFindings: true            # set false during the 2-week audit period
+      srcDir: src
+      serverlessStage: $(STAGE)
+      defectDojoProduct: omni-dw-api-services
+      dependsOn: [Build]
+
+  # ---- API spec lint (Phase 3) ----
+  - template: phase-3-dast-api/pipelines/templates/api-lint.yml@security
+    parameters:
+      openapiPath: openapi/openapi.yaml
+      dependsOn: [Build]
+
+  - stage: Deploy_Dev
+    dependsOn: [Security, ApiLint]
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Deploy
+        environment: omni-dev
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AWSShellScript@1
+                  inputs:
+                    awsCredentials: aws-omni-dev-oidc      # OIDC (workload identity federation) — no keys
+                    regionName: ap-south-1
+                    scriptType: inline
+                    inlineScript: |
+                      npm ci
+                      npx serverless deploy --stage dev --conceal
+
+  - stage: Deploy_Stage
+    dependsOn: Deploy_Dev
+    jobs:
+      - deployment: Deploy
+        environment: omni-stage
+        pool: { vmImage: ubuntu-latest }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AWSShellScript@1
+                  inputs:
+                    awsCredentials: aws-omni-stage-oidc
+                    regionName: ap-south-1
+                    scriptType: inline
+                    inlineScript: |
+                      npm ci
+                      npx serverless deploy --stage stage --conceal
+
+  # ---- Passive DAST after each staging deploy (Phase 3) ----
+  - template: phase-3-dast-api/pipelines/templates/dast-zap.yml@security
+    parameters:
+      mode: baseline
+      targetUrl: https://api-stage.example.com
+      dependsOn: [Deploy_Stage]
